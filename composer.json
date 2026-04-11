@@ -12,6 +12,7 @@
     "license": "MIT",
     "repositories": [
         {
+            "name": "nativephp-plugins",
             "type": "composer",
             "url": "https://plugins.nativephp.com"
         }
