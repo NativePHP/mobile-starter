@@ -10,6 +10,12 @@
         "mobile"
     ],
     "license": "MIT",
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://plugins.nativephp.com"
+        }
+    ],
     "require": {
         "php": "^8.2",
         "laravel/boost": "^2.0",
