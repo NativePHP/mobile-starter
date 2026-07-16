@@ -52,3 +52,26 @@ it('renders the original welcome design with native components', function () {
             && ($node['layout']['align_items'] ?? null) === 1)
         ->assertAccessible();
 });
+
+it('opens every welcome link through the native browser bridge', function () {
+    $bridge = Native::fakeBridge()
+        ->respondTo('Browser.OpenInApp', ['success' => true])
+        ->respondTo('Browser.Open', ['success' => true]);
+
+    Native::visit('/')
+        ->tap('docs-link')
+        ->tap('community-link')
+        ->tap('github-link');
+
+    $bridge
+        ->assertCalled('Browser.OpenInApp', fn (array $params): bool => $params['url'] === 'https://nativephp.com/docs/mobile')
+        ->assertCalled('Browser.Open', fn (array $params): bool => $params['url'] === 'https://discord.gg/nativephp')
+        ->assertCalled('Browser.Open', fn (array $params): bool => $params['url'] === 'https://github.com/NativePHP')
+        ->assertCalledTimes('Browser.OpenInApp', 1)
+        ->assertCalledTimes('Browser.Open', 2)
+        ->assertCallOrder([
+            'Browser.OpenInApp',
+            'Browser.Open',
+            'Browser.Open',
+        ]);
+});

@@ -23,6 +23,7 @@
         "laravel/framework": "^13.0",
         "laravel/tinker": "^3.0",
         "nativephp/mobile": "~4.0.0@RC",
+        "nativephp/mobile-browser": "^1.0",
         "nativephp/native-ui": "@dev"
     },
     "require-dev": {

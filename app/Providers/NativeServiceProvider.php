@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Native\Mobile\Providers\BrowserServiceProvider;
 use Nativephp\NativeUi\NativeUIServiceProvider;
 
 class NativeServiceProvider extends ServiceProvider
@@ -36,6 +37,7 @@ class NativeServiceProvider extends ServiceProvider
     {
         return [
             NativeUIServiceProvider::class,
+            BrowserServiceProvider::class,
         ];
     }
 }
