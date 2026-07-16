@@ -18,11 +18,12 @@
         }
     ],
     "require": {
-        "php": "^8.2",
+        "php": "^8.4",
         "laravel/boost": "^2.0",
-        "laravel/framework": "^12.0",
-        "laravel/tinker": "^2.10.1",
-        "nativephp/mobile": "^3.0"
+        "laravel/framework": "^13.0",
+        "laravel/tinker": "^3.0",
+        "nativephp/mobile": "~4.0.0@RC",
+        "nativephp/native-ui": "@dev"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
