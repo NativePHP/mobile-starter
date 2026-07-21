@@ -1,79 +1,82 @@
-<native:column
+<column
     ref="welcome-screen"
     fill
     center
-    class="safe-area bg-[#FAFAFA] px-6 py-6 dark:bg-[#0A0A0A]"
+    class="safe-area bg-theme-background px-6 py-6"
 >
-    <native:column
+    <column
         ref="welcome-card"
-        class="w-full rounded-2xl bg-[#FFFFFF] p-10 shadow-md dark:bg-[#161615]"
+        class="w-full rounded-2xl bg-theme-surface p-10 shadow-md"
     >
-        <native:row ref="nativephp-logo-container" class="w-full justify-center mb-6">
-            <native:image
+        <row ref="nativephp-logo-container" class="w-full justify-center mb-6">
+            <image
                 ref="nativephp-logo"
                 src="{{ public_path('images/nativephp-logo.png') }}"
                 alt="NativePHP"
                 class="w-16 h-16 object-contain"
             />
-        </native:row>
+        </row>
 
-        <native:text ref="welcome-title" class="text-2xl font-semibold text-center text-[#1B1B18] dark:text-[#EDEDEC]">
-            {{ config('app.name', 'Mimi') }}
-        </native:text>
-        <native:text ref="welcome-subtitle" class="mt-2 mb-8 text-sm text-center text-[#706F6C] dark:text-[#A1A09A]">
+        <text font="accent" ref="welcome-title" class="text-xl font-bold text-center text-theme-on-surface">
+            NativePHP Starter Kit
+        </text>
+        <text font="lobster" ref="welcome-subtitle" class="mt-2 mb-8 text-center text-theme-on-surface-variant">
             Your app is ready.
-        </native:text>
+        </text>
 
-        <native:column class="w-full gap-3">
-            <native:row
+        <column class="w-full gap-3">
+            <row
                 ref="docs-link"
                 a11y-label="Read the Docs"
-                class="w-full items-center gap-3 rounded-lg border border-[#E5E5E5] bg-[#FAFAFA] px-4 py-[14] dark:border-[#3E3E3A] dark:bg-[#1F1F1E]"
+                a11y-hint="Opens the documentation in an in-app browser"
+                class="w-full items-center gap-3 rounded-lg border border-theme-outline bg-theme-surface-variant px-4 py-[14]"
                 @press="openDocs"
             >
-                <native:icon name="book.pages" class="text-[#1B1B18] dark:text-[#EDEDEC]" :size="20" />
-                <native:text class="flex-1 text-sm font-normal text-[#1B1B18] dark:text-[#EDEDEC]">
+                <icon name="book.pages" class="text-theme-on-surface" :size="20" />
+                <text  class="flex-1 text-sm font-normal text-theme-on-surface">
                     Read the Docs
-                </native:text>
-                <native:icon name="arrow.up.right" class="text-[#1B1B18] opacity-50 dark:text-[#EDEDEC]" :size="16" />
-            </native:row>
+                </text>
+                <icon name="arrow.up.right" class="text-theme-on-surface opacity-50" :size="16" />
+            </row>
 
-            <native:row
+            <row
                 ref="community-link"
                 a11y-label="Join the Community"
-                class="w-full items-center gap-3 rounded-lg border border-[#E5E5E5] bg-[#FAFAFA] px-4 py-[14] dark:border-[#3E3E3A] dark:bg-[#1F1F1E]"
+                a11y-hint="Opens the Discord invite in your browser"
+                class="w-full items-center gap-3 rounded-lg border border-theme-outline bg-theme-surface-variant px-4 py-[14]"
                 @press="openDiscord"
             >
-                <native:icon name="person.3" class="text-[#1B1B18] dark:text-[#EDEDEC]" :size="20" />
-                <native:text class="flex-1 text-sm font-normal text-[#1B1B18] dark:text-[#EDEDEC]">
+                <icon name="person.3" class="text-theme-on-surface" :size="20" />
+                <text  class="flex-1 text-sm font-normal text-theme-on-surface">
                     Join the Community
-                </native:text>
-                <native:icon name="arrow.up.right" class="text-[#1B1B18] opacity-50 dark:text-[#EDEDEC]" :size="16" />
-            </native:row>
+                </text>
+                <icon name="arrow.up.right" class="text-theme-on-surface opacity-50" :size="16" />
+            </row>
 
-            <native:row
+            <row
                 ref="github-link"
                 a11y-label="Explore on GitHub"
-                class="w-full items-center gap-3 rounded-lg border border-[#E5E5E5] bg-[#FAFAFA] px-4 py-[14] dark:border-[#3E3E3A] dark:bg-[#1F1F1E]"
+                a11y-hint="Opens the GitHub organization in your browser"
+                class="w-full items-center gap-3 rounded-lg border border-theme-outline bg-theme-surface-variant px-4 py-[14]"
                 @press="openGitHub"
             >
-                <native:icon name="chevron.left.forwardslash.chevron.right" class="text-[#1B1B18] dark:text-[#EDEDEC]" :size="20" />
-                <native:text class="flex-1 text-sm font-normal text-[#1B1B18] dark:text-[#EDEDEC]">
+                <icon name="chevron.left.forwardslash.chevron.right" class="text-theme-on-surface" :size="20" />
+                <text  class="flex-1 text-sm font-normal text-theme-on-surface">
                     Explore on GitHub
-                </native:text>
-                <native:icon name="arrow.up.right" class="text-[#1B1B18] opacity-50 dark:text-[#EDEDEC]" :size="16" />
-            </native:row>
-        </native:column>
+                </text>
+                <icon name="arrow.up.right" class="text-theme-on-surface opacity-50" :size="16" />
+            </row>
+        </column>
 
-        <native:divider class="w-full my-6 border-[#E5E5E5] dark:border-[#3E3E3A]" />
+        <divider class="w-full my-6 border-theme-outline" />
 
-        <native:column ref="welcome-footer" class="w-full items-center gap-1">
-            <native:text class="w-full text-xs text-center text-[#A1A09A]">
+        <column ref="welcome-footer" class="w-full items-center gap-1">
+            <text font="lobster" class="w-full text-center text-theme-on-surface-variant">
                 Built on NativePHP · Made by Bifrost
-            </native:text>
-            <native:text class="w-full text-xs text-center text-[#A1A09A]">
+            </text>
+            <text font="lobster" class="w-full text-center text-theme-on-surface-variant">
                 Powered by Laravel
-            </native:text>
-        </native:column>
-    </native:column>
-</native:column>
+            </text>
+        </column>
+    </column>
+</column>

@@ -95,6 +95,58 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | iOS Permission Strings (Info.plist Overrides)
+    |--------------------------------------------------------------------------
+    |
+    | Override iOS Info.plist usage descriptions provided by plugins. Anything
+    | you set here is applied AFTER all plugin manifests are merged, so it
+    | always wins — useful when multiple plugins claim the same key (e.g.
+    | mobile-camera and mobile-scanner both set NSCameraUsageDescription) and
+    | you want a single explicit string for App Store review.
+    |
+    | Android has no equivalent: permission rationale is shown by app code at
+    | runtime, not declared in the manifest, so this block is iOS-only.
+    |
+    */
+
+    'permissions' => [
+        // 'NSCameraUsageDescription' => 'Used to take a profile photo.',
+        // 'NSMicrophoneUsageDescription' => 'Used to record audio with your videos.',
+        // 'NSPhotoLibraryUsageDescription' => 'Used to select photos for your post.',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | iOS Permission String Localizations
+    |--------------------------------------------------------------------------
+    |
+    | Provide per-locale overrides for the strings declared above. Each key is
+    | a BCP 47 locale code (e.g. 'nl', 'fr', 'zh-Hans') and its value mirrors
+    | the `permissions` array shape. At build time these are written to
+    | {locale}.lproj/InfoPlist.strings inside the iOS bundle, and the locales
+    | are registered with the Xcode project so they ship with the app.
+    |
+    | iOS picks the right string at runtime based on the user's preferred
+    | language, falling back to the value in `permissions` (Info.plist).
+    |
+    | Plugins can ship their own localizations via `ios.info_plist_localizations`
+    | in their nativephp.json — app-level entries win on key collisions.
+    |
+    */
+
+    'permission_localizations' => [
+        // 'nl' => [
+        //     'NSCameraUsageDescription' => 'Gebruikt om een profielfoto te maken.',
+        //     'NSMicrophoneUsageDescription' => 'Gebruikt om audio op te nemen bij je video\'s.',
+        //     'NSPhotoLibraryUsageDescription' => 'Gebruikt om foto\'s voor je bericht te selecteren.',
+        // ],
+        // 'fr' => [
+        //     'NSCameraUsageDescription' => 'Utilisé pour prendre une photo de profil.',
+        // ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Environment Keys to Clean Up
     |--------------------------------------------------------------------------
     |
@@ -103,6 +155,27 @@ return [
     | leaked. Wildcards are supported (e.g. AWS_* or *_SECRET).
     |
     */
+
+    /*
+    |--------------------------------------------------------------------------
+    | Runtime Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Controls how the PHP interpreter runs on device. In 'persistent' mode,
+    | PHP boots once and stays alive — subsequent requests dispatch through
+    | the running interpreter (~5-30ms instead of ~200-300ms). In 'classic'
+    | mode, each request does a full php_embed_init/shutdown cycle.
+    |
+    | reset_instances:        Clear resolved facade instances between dispatches
+    | gc_between_dispatches:  Run gc_collect_cycles() between dispatches
+    |
+    */
+
+    'runtime' => [
+        'mode' => env('NATIVEPHP_RUNTIME_MODE', 'persistent'),
+        'reset_instances' => true,
+        'gc_between_dispatches' => false,
+    ],
 
     'cleanup_env_keys' => [
         'AWS_*',
@@ -131,11 +204,77 @@ return [
         'storage/logs/laravel.log',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Runtime Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Controls the persistent PHP runtime behavior. In 'persistent' mode,
+    | Laravel boots once and the kernel is reused across requests (~5-30ms
+    | per dispatch instead of ~200-300ms). Falls back to 'classic' mode
+    | (full init/shutdown per request) if persistent boot fails.
+    |
+    */
+
+    'runtime' => [
+        'mode' => 'persistent', // 'classic' or 'persistent'
+        'reset_instances' => true,
+        'gc_between_dispatches' => false,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Runtime Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Controls the persistent PHP runtime behavior. In 'persistent' mode,
+    | Laravel boots once and the kernel is reused across requests (~5-30ms
+    | per dispatch instead of ~200-300ms). Falls back to 'classic' mode
+    | (full init/shutdown per request) if persistent boot fails.
+    |
+    */
+
+    'runtime' => [
+        'mode' => env('NATIVEPHP_RUNTIME_MODE', 'persistent'),
+        'reset_instances' => true,
+        'gc_between_dispatches' => false,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | FPS Overlay
+    |--------------------------------------------------------------------------
+    |
+    | When true, shows a small dev overlay in the top-trailing corner with
+    | live FPS / p99 frame time / jank count. Useful for spotting jank
+    | during development. Default off so production users never see it.
+    | Toggle via `NATIVEPHP_FPS_OVERLAY=true` in `.env`.
+    |
+    */
+    'fps_overlay' => env('NATIVEPHP_FPS_OVERLAY', false),
+
     'android' => [
         'gradle_jdk_path' => env('NATIVEPHP_GRADLE_PATH'),
         'android_sdk_path' => env('NATIVEPHP_ANDROID_SDK_LOCATION'),
         'emulator_path' => env('ANDROID_EMULATOR'),
         '7zip-location' => env('NATIVEPHP_7ZIP_LOCATION', 'C:\\Program Files\\7-Zip\\7z.exe'),
+
+        /*
+        |--------------------------------------------------------------------------
+        | Android SDK Versions
+        |--------------------------------------------------------------------------
+        |
+        | Configure the Android SDK versions for your app build. These control
+        | which Android versions your app can run on and which APIs are available.
+        |
+        | compile_sdk: The SDK version used to compile your app (latest features)
+        | min_sdk:     The minimum Android version your app supports
+        | target_sdk:  The SDK version your app is designed and tested for
+        |
+        */
+        'compile_sdk' => env('NATIVEPHP_ANDROID_COMPILE_SDK', 36),
+        'min_sdk' => env('NATIVEPHP_ANDROID_MIN_SDK', 33),
+        'target_sdk' => env('NATIVEPHP_ANDROID_TARGET_SDK', 36),
 
         /*
         |--------------------------------------------------------------------------
@@ -148,7 +287,33 @@ return [
         |          'dark'  - Dark icons
         |
         */
-        'status_bar_style' => env('NATIVEPHP_ANDROID_STATUS_BAR_STYLE', 'auto'),
+        'status_bar_style' => 'auto',
+
+        /*
+        |--------------------------------------------------------------------------
+        | Android Theme Colors
+        |--------------------------------------------------------------------------
+        |
+        | Colors applied to the generated Android theme (Theme.AndroidPHP). These
+        | drive the colorPrimary / colorOnPrimary values used by native dialogs
+        | such as the date and time pickers (OK / Cancel buttons).
+        |
+        | The night value is written to values-night/themes.xml so Android can
+        | switch automatically when the device is in dark mode.
+        |
+        | Values must be hex strings: #RRGGBB or #AARRGGBB. Wrap them in quotes
+        | inside your .env file (e.g. NATIVEPHP_ANDROID_COLOR_PRIMARY="#04ABA6")
+        | because '#' starts a comment in .env.
+        |
+        | Both values/themes.xml and values-night/themes.xml are written from
+        | these values during `php artisan native:install`.
+        |
+        */
+        'theme' => [
+            'color_primary' => env('NATIVEPHP_ANDROID_COLOR_PRIMARY', '#04ABA6'),
+            'color_primary_night' => env('NATIVEPHP_ANDROID_COLOR_PRIMARY_NIGHT', '#FFFFFF'),
+            'color_on_primary' => env('NATIVEPHP_ANDROID_COLOR_ON_PRIMARY', '#FFFFFF'),
+        ],
 
         /*
         |--------------------------------------------------------------------------
@@ -180,6 +345,52 @@ return [
             'parallel_builds' => env('NATIVEPHP_ANDROID_PARALLEL_BUILDS', true),
             'incremental_builds' => env('NATIVEPHP_ANDROID_INCREMENTAL_BUILDS', true),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Development Server Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the NativePHP development server that allows hot
+    | reloading of mobile applications during development.
+    |
+    */
+
+    'server' => [
+        // HTTP server port for serving the app
+        'http_port' => env('NATIVEPHP_HTTP_PORT', 3000),
+
+        // WebSocket server port for hot reload communication
+        'ws_port' => env('NATIVEPHP_WS_PORT', 8081),
+
+        // Service name advertised on the network
+        'service_name' => env('NATIVEPHP_SERVICE_NAME', 'NativePHP Server'),
+
+        // Service type for mDNS advertisement
+        'service_type' => '_http._tcp',
+
+        // Public directory to serve (relative to Laravel root)
+        'public_path' => env('NATIVEPHP_PUBLIC_PATH', 'public'),
+
+        // Build output directory (where the ZIP will be created)
+        'build_path' => env('NATIVEPHP_BUILD_PATH', 'storage/app/native-build'),
+
+        // Automatically open browser with QR code when server starts.
+        // Default off — the terminal renders a scannable QR. Pass --browser
+        // to native:jump (or set NATIVEPHP_OPEN_BROWSER=true) to opt in.
+        'open_browser' => env('NATIVEPHP_OPEN_BROWSER', false),
+
+        // Watch these directories for changes
+        'watch_paths' => [
+            'app',
+            'resources',
+            'routes',
+            'public/build',
+        ],
+
+        // File extensions to watch for changes
+        'watch_extensions' => ['php', 'blade.php', 'js', 'css', 'ts', 'vue', 'json'],
     ],
 
     /*
@@ -225,47 +436,6 @@ return [
         'api_key_id' => env('APP_STORE_API_KEY_ID'),
         'api_issuer_id' => env('APP_STORE_API_ISSUER_ID'),
         'app_name' => env('APP_STORE_APP_NAME'),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Permissions
-    |--------------------------------------------------------------------------
-    |
-    | Here you may enable or disable specific native features for your app.
-    | Setting a permission to true allows NativePHP to request the necessary
-    | access from the operating system at runtime (e.g., for NFC, biometrics,
-    | or push notifications).
-    |
-    | For iOS, you can also provide a custom string that explains why your
-    | app needs this permission. This text will be shown to users when they
-    | are prompted to grant access. If you provide a string, the permission
-    | will be enabled automatically.
-    |
-    | Android will interpret any string value as 'true', but the custom text
-    | is only used on iOS (Android doesn't support permission reasons).
-    |
-    | Examples:
-    |   'camera' => true,  // Uses default message
-    |   'camera' => 'We need camera access to scan QR codes for login.',
-    |   'camera' => false, // Permission disabled
-    |
-    | Make sure you run `php artisan native:install --force` after changing.
-    |
-    */
-
-    'permissions' => [
-        'biometric' => false,
-        'camera' => false,
-        'microphone' => false,
-        'microphone_background' => false,
-        'push_notifications' => false,
-        'location' => false,
-        'vibrate' => false,
-        'storage_read' => false,
-        'storage_write' => false,
-        'scanner' => false,
-        'network_state' => true,
     ],
 
     /*
