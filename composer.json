@@ -22,9 +22,9 @@
         "laravel/boost": "^2.0",
         "laravel/framework": "^13.0",
         "laravel/tinker": "^3.0",
-        "nativephp/mobile": "~4.0.0@RC",
+        "nativephp/mobile": "^4.0",
         "nativephp/mobile-browser": "^1.0",
-        "nativephp/native-ui": "@dev"
+        "nativephp/mobile-ui": "^0.3"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
