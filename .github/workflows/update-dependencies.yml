@@ -20,14 +20,9 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '8.4'
           extensions: dom, curl, libxml, mbstring, zip
           coverage: none
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       - name: Configure Composer Auth
         run: |
@@ -36,16 +31,10 @@ jobs:
       - name: Update Composer Dependencies
         run: composer update --no-interaction --no-progress
 
-      - name: Update NPM Dependencies
-        run: npm update
-
-      - name: Rebuild Frontend Assets
-        run: npm run build
-
       - name: Check for Changes
         id: changes
         run: |
-          if git diff --quiet composer.lock package-lock.json; then
+          if git diff --quiet composer.lock; then
             echo "changed=false" >> $GITHUB_OUTPUT
           else
             echo "changed=true" >> $GITHUB_OUTPUT
@@ -56,10 +45,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add composer.lock package-lock.json
+          git add composer.lock
           git commit -m "Update dependencies
 
           Automated daily dependency update:
-          - composer update
-          - npm update"
+          - composer update"
           git push

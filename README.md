@@ -14,5 +14,3 @@ A pre-configured Laravel + NativePHP Mobile starter template.
 This repository has a GitHub Action that runs daily to keep dependencies up to date:
 
 - Runs `composer update` and commits `composer.lock`
-- Runs `npm update` and commits `package-lock.json`
-- Runs `npm run build` to verify the build still works (assets are gitignored)
