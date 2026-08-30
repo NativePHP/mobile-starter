@@ -1,0 +1,91 @@
+name: Fresh Install
+
+# The starter deliberately ships no composer.lock, so every constraint resolves
+# to whatever is latest at clone time. That means the out-of-the-box experience
+# can break with no commit to this repository - a new upstream release is
+# enough. The daily schedule is what catches that; the pull_request trigger
+# catches changes made here.
+
+on:
+  schedule:
+    # Run daily at 6am UTC
+    - cron: '0 6 * * *'
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: # Allow manual trigger
+
+# Read-only: this workflow must never write a composer.lock back to the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: fresh-install-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  install:
+    name: Clone, install, boot, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, sqlite3, pdo_sqlite
+          coverage: none
+
+      - name: Configure Composer Auth
+        env:
+          LICENSE_EMAIL: ${{ secrets.NATIVEPHP_LICENSE_EMAIL }}
+          LICENSE_KEY: ${{ secrets.NATIVEPHP_LICENSE_KEY }}
+        run: |
+          # plugins.nativephp.com serves packages.json anonymously, so this is
+          # only needed once a premium plugin is required. Secrets are not
+          # exposed to pull requests from forks, so absence must not be fatal.
+          if [ -n "$LICENSE_KEY" ]; then
+            composer config --global http-basic.nativephp.composer.sh "$LICENSE_EMAIL" "$LICENSE_KEY"
+            echo "Composer auth configured."
+          else
+            echo "No NativePHP license secret available; continuing unauthenticated."
+          fi
+
+      - name: Install Dependencies
+        # No lock file, so this is what `composer install` does for a fresh
+        # clone. A failure here means the starter no longer installs.
+        run: composer update --no-interaction --no-progress
+
+      - name: Prepare Application
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+
+      - name: Run Migrations
+        # Mirrors the device: NativePHP runs migrations against a real SQLite
+        # file on app start, not the in-memory database the test suite uses.
+        run: php artisan migrate --force --no-interaction
+
+      - name: Run Tests
+        run: php artisan test
+
+      - name: Discard composer.lock
+        if: always()
+        run: |
+          # Throw away the lock file the install just generated - the starter
+          # ships without one, and nothing here may commit one back.
+          rm -f composer.lock
+          # If a composer.lock is ever tracked again, restore the committed
+          # copy rather than leaving a deletion staged.
+          git checkout -- composer.lock 2>/dev/null || true
+
+          if [ -n "$(git status --porcelain -- composer.lock)" ]; then
+            echo "::error::composer.lock still differs from the committed tree after discard"
+            git status --porcelain -- composer.lock
+            exit 1
+          fi
+          echo "composer.lock discarded; nothing to commit."
