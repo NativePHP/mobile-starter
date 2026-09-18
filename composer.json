@@ -18,11 +18,11 @@
         }
     ],
     "require": {
-        "php": "^8.4",
+        "php": "^8.3",
         "laravel/boost": "^2.0",
         "laravel/framework": "^13.0",
         "laravel/tinker": "^3.0",
-        "nativephp/mobile": "^4.0",
+        "nativephp/mobile": "^4.5",
         "nativephp/mobile-browser": "^1.0",
         "nativephp/mobile-ui": "^0.3"
     },
