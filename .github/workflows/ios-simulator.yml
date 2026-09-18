@@ -1,0 +1,330 @@
+name: iOS Simulator Build
+
+# Builds the starter as an iOS simulator app on every push to main and
+# publishes it to Cloudflare R2, served from bin.nativephp.com. Cloud Macs can
+# then download and install the current starter in seconds instead of
+# building it themselves.
+#
+# Published under mobile-starter/ios-simulator/:
+#   <commit sha>.zip  the build of that commit (the newest 10 are kept)
+#   latest.zip        the newest build
+#   latest.json       what latest.zip is: commit, sha256, bundle id,
+#                     toolchain. Uploaded last.
+#
+# Required repository secrets:
+#   R2_ACCESS_KEY_ID      Cloudflare R2 access key
+#   R2_SECRET_ACCESS_KEY  Cloudflare R2 secret key
+#
+# Docs-only pushes are not skipped. The publish step only replaces latest when
+# its commit is still the tip of main, so skipping a README push would leave
+# the run before it unable to publish. And with no composer.lock, any rebuild
+# can pick up new upstream releases anyway.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # manual runs on other branches build but don't publish
+
+permissions:
+  contents: read
+
+# A newer push cancels the older run, so an older, slower build can never
+# finish last and overwrite latest.
+concurrency:
+  group: ios-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build and publish simulator app
+    # macos-26 is the newest GA Apple Silicon image. NativePHP's iOS project
+    # uses iOS 26 APIs (Liquid Glass), so it needs Xcode 26 or later.
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    env:
+      # Pinned so an image update can't change the toolchain under us. 26.6 is
+      # the newest stable Xcode on macos-26. Xcode 27 is only on the xcode-27
+      # preview image for now.
+      XCODE_APP: /Applications/Xcode_26.6.app
+      # Fixed so consumers can always `simctl launch` the same id.
+      APP_ID: com.nativephp.starter
+      R2_ENDPOINT: https://713f4e1d515cf082921cdf5122bf1739.r2.cloudflarestorage.com
+      R2_BUCKET: nativephplibs
+      R2_PREFIX: mobile-starter/ios-simulator
+      PUBLIC_BASE_URL: https://bin.nativephp.com/mobile-starter/ios-simulator
+      KEEP_BUILDS: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          if [ ! -d "$XCODE_APP" ]; then
+            echo "::error::$XCODE_APP is not on this runner image. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+          echo "iOS simulator SDK $(xcrun --sdk iphonesimulator --show-sdk-version)"
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, sqlite3, pdo_sqlite
+          coverage: none
+
+      - name: Configure Composer Auth
+        env:
+          LICENSE_EMAIL: ${{ secrets.NATIVEPHP_LICENSE_EMAIL }}
+          LICENSE_KEY: ${{ secrets.NATIVEPHP_LICENSE_KEY }}
+        run: |
+          # plugins.nativephp.com serves packages.json anonymously, so this is
+          # only needed once a premium plugin is required.
+          if [ -n "$LICENSE_KEY" ]; then
+            composer config --global http-basic.nativephp.composer.sh "$LICENSE_EMAIL" "$LICENSE_KEY"
+            echo "Composer auth configured."
+          else
+            echo "No NativePHP license secret available; continuing unauthenticated."
+          fi
+
+      - name: Locate Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      # Only Composer's download cache. There is no lock file to key on, so
+      # every run saves a fresh copy and the next run restores the newest.
+      # The PHP binaries native:install fetches are not cached: they're a
+      # 20MB download, and php-bin-mobile can republish a release under the
+      # same file name, which a cache would never notice.
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Dependencies
+        # No lock file, so this resolves exactly what a fresh clone gets.
+        run: composer update --no-interaction --no-progress
+
+      - name: Prepare Application
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          # native:install asks for a bundle id when this is empty.
+          sed -i '' "s/^NATIVEPHP_APP_ID=.*/NATIVEPHP_APP_ID=${APP_ID}/" .env
+          grep "^NATIVEPHP_APP_ID=" .env
+
+      - name: Install NativePHP for iOS
+        run: |
+          php artisan native:install ios --no-interaction
+          # native:install prints an error when the PHP download fails but
+          # still exits 0, so check the simulator libraries actually landed.
+          if [ ! -f nativephp/ios/Libraries/iphonesimulator/libphp.a ]; then
+            echo "::error::native:install did not install the iOS simulator PHP libraries"
+            exit 1
+          fi
+
+      - name: Build simulator app
+        # This is the Debug build `native:run ios` installs, hot reload server
+        # included. native:build only takes that path when it is given a
+        # simulator to target (without one it archives a Release build), so
+        # hand it the newest iPhone the selected Xcode can build for. The
+        # simulator is never booted. The PHP simulator libraries are
+        # arm64-only, so the app is too.
+        run: |
+          SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          UDID=$(xcrun simctl list devices available --json | jq -r --arg sdk "$SDK" '
+            ($sdk | split(".") | map(tonumber)) as $max
+            | [.devices | to_entries[]
+               | select(.key | test("SimRuntime\\.iOS-"))
+               | (.key | capture("iOS-(?<maj>[0-9]+)-(?<min>[0-9]+)")
+                  | [(.maj | tonumber), (.min | tonumber)]) as $v
+               | select($v <= $max)
+               | .value[] | select(.name | startswith("iPhone"))
+               | {udid, v: $v}]
+            | sort_by(.v) | last | .udid // empty')
+          if [ -z "$UDID" ]; then
+            echo "::error::No iPhone simulator available for the iOS $SDK SDK"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Building for simulator $UDID"
+
+          php artisan native:build --simulated --target="$UDID" --no-tty --no-interaction
+
+          APP_PATH=nativephp/ios/build/Build/Products/Debug-iphonesimulator/NativePHP-simulator.app
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::native:build finished but $APP_PATH is missing"
+            exit 1
+          fi
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-log-${{ github.sha }}
+          path: nativephp/ios-build.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Package app
+        run: |
+          mkdir -p dist
+          ZIP="dist/${GITHUB_SHA}.zip"
+          # ditto keeps the bundle's symlinks and code signature intact. A
+          # plain zip can produce an .app that simctl refuses to install.
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP"
+          ls -l "$ZIP"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Write manifest
+        run: |
+          PLIST="$APP_PATH/Info.plist"
+          plist() { plutil -extract "$1" raw -o - "$PLIST"; }
+
+          EXECUTABLE=$(plist CFBundleExecutable)
+          BUNDLE_ID=$(plist CFBundleIdentifier)
+          DISPLAY_NAME=$(plist CFBundleDisplayName)
+          XCODE_BUILD=$(plist DTXcodeBuild)
+          IOS_SDK=$(plist DTPlatformVersion)
+          DEPLOYMENT_TARGET=$(plist MinimumOSVersion)
+          ARCHS=$(lipo -archs "$APP_PATH/$EXECUTABLE")
+          XCODE_VERSION=$(xcodebuild -version | awk '/^Xcode/ {print $2}')
+          NATIVEPHP_MOBILE=$(composer show nativephp/mobile --format=json | jq -r '.versions[0]')
+          PHP_VERSION=$(jq -r '.php.version' nativephp.lock)
+          SHA256=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+          SIZE=$(stat -f%z "$ZIP")
+
+          jq -n \
+            --arg commit "$GITHUB_SHA" \
+            --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg url "$PUBLIC_BASE_URL/$GITHUB_SHA.zip" \
+            --arg sha256 "$SHA256" \
+            --argjson size "$SIZE" \
+            --arg bundle_id "$BUNDLE_ID" \
+            --arg app "$(basename "$APP_PATH")" \
+            --arg executable "$EXECUTABLE" \
+            --arg display_name "$DISPLAY_NAME" \
+            --arg nativephp_mobile "$NATIVEPHP_MOBILE" \
+            --arg php "$PHP_VERSION" \
+            --arg xcode "$XCODE_VERSION" \
+            --arg xcode_build "$XCODE_BUILD" \
+            --arg ios_sdk "$IOS_SDK" \
+            --arg deployment_target "$DEPLOYMENT_TARGET" \
+            --arg archs "$ARCHS" \
+            --arg run_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{
+              commit: $commit,
+              built_at: $built_at,
+              url: $url,
+              sha256: $sha256,
+              size_bytes: $size,
+              bundle_id: $bundle_id,
+              app_name: $app,
+              executable: $executable,
+              display_name: $display_name,
+              configuration: "Debug",
+              nativephp_mobile_version: $nativephp_mobile,
+              php_version: $php,
+              xcode_version: $xcode,
+              xcode_build: $xcode_build,
+              ios_sdk_version: $ios_sdk,
+              deployment_target: $deployment_target,
+              architectures: ($archs | split(" ")),
+              run_url: $run_url
+            }' > dist/latest.json
+          cat dist/latest.json
+
+          {
+            echo "### iOS simulator build"
+            echo
+            echo "| | |"
+            echo "|-|-|"
+            echo "| Bundle id | \`$BUNDLE_ID\` |"
+            echo "| nativephp/mobile | $NATIVEPHP_MOBILE |"
+            echo "| Xcode / iOS SDK | $XCODE_VERSION ($XCODE_BUILD) / $IOS_SDK |"
+            echo "| Deployment target | iOS $DEPLOYMENT_TARGET |"
+            echo "| Architectures | $ARCHS |"
+            echo "| Zip | $SIZE bytes, sha256 \`$SHA256\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-${{ github.sha }}
+          path: |
+            dist/${{ github.sha }}.zip
+            dist/latest.json
+          retention-days: 7
+          compression-level: 0 # already a zip
+          if-no-files-found: error
+
+      - name: Publish to R2
+        # Only main publishes. Manual runs on other branches stop at the
+        # artifact above.
+        if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY secrets are not set, so the build can't be published. The zip is still attached to this run as an artifact."
+            exit 1
+          fi
+
+          # A re-run of an older commit must not roll latest back.
+          MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$MAIN_SHA" != "$GITHUB_SHA" ]; then
+            echo "::warning::$GITHUB_SHA is no longer the tip of main ($MAIN_SHA); not publishing."
+            echo "Not published: $GITHUB_SHA is no longer the tip of main." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          put() {
+            aws s3 cp "$1" "s3://$R2_BUCKET/$R2_PREFIX/$2" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --content-type "$3" \
+              --cache-control "no-cache, no-store"
+          }
+
+          put "$ZIP" "$GITHUB_SHA.zip" application/zip
+          put "$ZIP" latest.zip application/zip
+          # Last, so a reader never sees a manifest pointing at a zip that
+          # isn't there yet.
+          put dist/latest.json latest.json application/json
+
+          # Keep the newest per-commit zips. latest.* never match the pattern
+          # and the zip just uploaded is excluded explicitly.
+          aws s3api list-objects-v2 \
+            --bucket "$R2_BUCKET" \
+            --prefix "$R2_PREFIX/" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --output json \
+            | jq -r --arg current "$R2_PREFIX/$GITHUB_SHA.zip" --argjson keep "$KEEP_BUILDS" '
+                [.Contents[]? | select(.Key | test("/[0-9a-f]{40}\\.zip$"))]
+                | sort_by(.LastModified) | reverse | .[$keep:][]
+                | select(.Key != $current) | .Key' \
+            | while read -r KEY; do
+                echo "Pruning $KEY"
+                aws s3 rm "s3://$R2_BUCKET/$KEY" --endpoint-url "$R2_ENDPOINT"
+              done
+
+          {
+            echo
+            echo "Published:"
+            echo
+            echo "- $PUBLIC_BASE_URL/$GITHUB_SHA.zip"
+            echo "- $PUBLIC_BASE_URL/latest.zip"
+            echo "- $PUBLIC_BASE_URL/latest.json"
+          } >> "$GITHUB_STEP_SUMMARY"
