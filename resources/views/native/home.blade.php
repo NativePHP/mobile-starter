@@ -11,7 +11,7 @@
         <row ref="nativephp-logo-container" class="w-full justify-center mb-6">
             <image
                 ref="nativephp-logo"
-                src="{{ public_path('images/nativephp-logo.png') }}"
+                src="{{ asset('images/nativephp-logo.png') }}"
                 alt="NativePHP"
                 class="w-16 h-16 object-contain"
             />
